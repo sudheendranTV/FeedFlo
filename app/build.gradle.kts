@@ -67,7 +67,12 @@ dependencies {
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp.logging.interceptor)
 
+    //Image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("com.valentinilk.shimmer:compose-shimmer:1.3.1")
+
+    //Paging compose
+    implementation("androidx.paging:paging-compose:3.3.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.junit)

@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
@@ -33,15 +34,19 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
 import coil.request.ImageRequest
 import com.example.feedflo.ui.theme.FeedFloTheme
 import com.example.feedflow.remote.response.Article
+import com.valentinilk.shimmer.shimmer
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    private val homeViewmodel: HomeViewmodel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,12 +54,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             FeedFloTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    NewsScreen(paddingValues = innerPadding)
+                    PaginatedNewsScreen(paddingValues = innerPadding)
                 }
             }
         }
     }
 }
+
 @Composable
 fun NewsScreen(paddingValues: PaddingValues, viewModel: HomeViewmodel = hiltViewModel()) {
     val newsResponse = viewModel._newsResponse
@@ -71,11 +77,13 @@ fun NewsScreen(paddingValues: PaddingValues, viewModel: HomeViewmodel = hiltView
                 CircularProgressIndicator()
             }
         }
+
         newsResponse.value?.articles.isNullOrEmpty() -> {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("No articles found")
             }
         }
+
         else -> {
             val articles = newsResponse.value?.articles.orEmpty()      // List<Article>
 
@@ -93,6 +101,67 @@ fun NewsScreen(paddingValues: PaddingValues, viewModel: HomeViewmodel = hiltView
 }
 
 @Composable
+fun PaginatedNewsScreen(paddingValues: PaddingValues, viewModel: HomeViewmodel = hiltViewModel()) {
+    val articles = viewModel.articles.collectAsLazyPagingItems()
+
+    LazyColumn {
+        items(articles.itemCount) { index ->
+            articles[index]?.let { article ->
+                NewsItem(article)
+            }
+        }
+
+        // Loading more indicator
+        articles.apply {
+            when {
+                loadState.refresh is LoadState.Loading -> {
+                    item { LoadingItem("Loading users...") }
+                }
+
+                loadState.append is LoadState.Loading -> {
+                    item { LoadingItem("Loading more...") }
+                }
+
+                loadState.append is LoadState.Error -> {
+                    item {
+                        RetryItem {
+                            retry() // Retry if load failed
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+}
+
+@Composable
+fun LoadingItem(text: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(text)
+    }
+}
+
+@Composable
+fun RetryItem(onRetry: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Button(onClick = onRetry) {
+            Text("Retry")
+        }
+    }
+}
+
+@Composable
 fun NewsItem(article: Article) {
     Column(
         modifier = Modifier
@@ -100,20 +169,7 @@ fun NewsItem(article: Article) {
             .padding(vertical = 5.dp)
     ) {
 
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(article.urlToImage)
-                .crossfade(true)
-                .placeholder(android.R.drawable.progress_indeterminate_horizontal)
-                .error(android.R.drawable.ic_dialog_alert)
-                .build(),
-            contentDescription = article.title,
-            modifier = Modifier
-                .fillMaxWidth()
-                //.padding(2.dp)
-                .height(180.dp)
-                .clip(RoundedCornerShape(5.dp)),
-            contentScale = ContentScale.Crop)
+        ImageWithShimmer(imageUrl = article.urlToImage ?: "")
 
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -123,17 +179,73 @@ fun NewsItem(article: Article) {
             modifier = Modifier.padding(4.dp),
             fontWeight = FontWeight.Bold,
             fontSize = 18.sp
-
         )
+
         Text(
             text = article.description ?: "No Description",
+            modifier = Modifier
+                .padding(horizontal = 4.dp),
             style = MaterialTheme.typography.bodyMedium
         )
-        Divider(modifier = Modifier.padding(top = 8.dp))
+
+        Spacer(modifier = Modifier.height(4.dp))
+
+        Divider(modifier = Modifier.padding(top = 4.dp))
     }
 }
 
+@Composable
+fun ImageWithNormalLoader(urlToImage: String) {
+    AsyncImage(
+        model = ImageRequest.Builder(LocalContext.current)
+            .data(urlToImage)
+            .crossfade(true)
+            .placeholder(android.R.drawable.progress_indeterminate_horizontal)
+            .error(android.R.drawable.ic_dialog_alert)
+            .build(),
+        contentDescription = null,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(4.dp)
+            .height(180.dp)
+            .clip(RoundedCornerShape(5.dp)),
+        contentScale = ContentScale.Crop
+    )
+}
 
+@Composable
+fun ImageWithShimmer(imageUrl: String) {
+    SubcomposeAsyncImage(
+        model = imageUrl,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(4.dp)
+            .clip(RoundedCornerShape(5.dp))
+            .height(200.dp),
+        loading = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .shimmer(),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                )
+            }
+        },
+        error = {
+            Text("⚠️ Error loading image")
+        },
+        success = {
+            SubcomposeAsyncImageContent()
+        }
+    )
+}
 
 @Composable
 fun Greeting(name: String, modifier: Modifier = Modifier) {
